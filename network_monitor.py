@@ -6,7 +6,7 @@ This application monitors network connectivity by pinging gateway addresses
 and alerts users when consecutive ping failures occur.
 
 Author: Vibes
-Date: August 10, 2025
+Date: August 11, 2025
 License: You are free to download, run, modify, and distribute this software in any way you'd like. The author provides no warranty or assurances as to its quality. Use of this software is at your own risk.
 """
 
@@ -41,6 +41,8 @@ class NetworkMonitor:
         self.consecutive_failures = 0
         self.alert_queue = queue.Queue()
         self.restart_timer = None
+        self.message_count = 0  # Track number of messages in status log
+        self.max_messages = 100  # Maximum number of messages to retain
 
         # Configuration variables
         self.selected_interface = tk.StringVar()
@@ -335,8 +337,13 @@ class NetworkMonitor:
                                           command=self.test_email_settings)
         self.test_email_button.pack(side=tk.LEFT, padx=5)
 
+        # Clear log button
+        self.clear_log_button = ttk.Button(button_frame, text="Clear Log", 
+                                         command=self.clear_status_log)
+        self.clear_log_button.pack(side=tk.LEFT, padx=5)
+
         # Status display
-        status_frame = ttk.LabelFrame(main_frame, text="Status", padding="10")
+        status_frame = ttk.LabelFrame(main_frame, text="Status (Last 100 Messages)", padding="10")
         status_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10)
 
         self.status_text = tk.Text(status_frame, height=10, width=50, state=tk.DISABLED)
@@ -523,6 +530,34 @@ class NetworkMonitor:
         """Update the threshold label when scale changes"""
         self.threshold_label.config(text=str(int(float(value))))
 
+    def trim_status_log(self):
+        """Trim status log to keep only the most recent messages"""
+        if self.message_count > self.max_messages:
+            # Get all text content
+            content = self.status_text.get("1.0", tk.END)
+            lines = content.split('\n')
+
+            # Keep only the last max_messages lines (plus empty line at end)
+            if len(lines) > self.max_messages + 1:  # +1 for the empty line at end
+                # Calculate how many lines to remove
+                lines_to_remove = len(lines) - self.max_messages - 1
+
+                # Remove old lines and update text widget
+                self.status_text.config(state=tk.NORMAL)
+                self.status_text.delete("1.0", f"{lines_to_remove + 1}.0")
+                self.status_text.config(state=tk.DISABLED)
+
+                # Update message count
+                self.message_count = self.max_messages
+
+    def clear_status_log(self):
+        """Clear all messages from the status log"""
+        self.status_text.config(state=tk.NORMAL)
+        self.status_text.delete("1.0", tk.END)
+        self.status_text.config(state=tk.DISABLED)
+        self.message_count = 0
+        self.log_status("Status log cleared")
+
     def log_status(self, message):
         """Add a timestamped message to the status display"""
         timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -532,6 +567,11 @@ class NetworkMonitor:
         self.status_text.insert(tk.END, full_message)
         self.status_text.see(tk.END)
         self.status_text.config(state=tk.DISABLED)
+
+        # Increment message count and trim if necessary
+        self.message_count += 1
+        if self.message_count > self.max_messages:
+            self.trim_status_log()
 
     def send_email_alert(self, alert_data):
         """
